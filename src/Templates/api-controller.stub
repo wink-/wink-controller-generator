@@ -1,0 +1,28 @@
+<?php
+
+namespace {{ namespace }};
+
+use {{ baseController }};
+use {{ modelClass }};
+{{ useClauses }}
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class {{ className }} extends {{ baseControllerName }}
+{
+    public function __construct()
+    {
+        $this->middleware([{{ middleware }}]);
+{{ authorizationConstructor }}
+    }
+
+{{ indexMethod }}
+
+{{ storeMethod }}
+
+{{ showMethod }}
+
+{{ updateMethod }}
+
+{{ destroyMethod }}
+}

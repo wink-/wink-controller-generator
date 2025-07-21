@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<psalm
+    errorLevel="3"
+    resolveFromConfigFile="true"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+    findUnusedBaselineEntry="true"
+    findUnusedCode="true"
+    findUnusedPsalmSuppress="true"
+>
+    <projectFiles>
+        <directory name="src"/>
+        <ignoreFiles>
+            <directory name="vendor"/>
+            <directory name="build"/>
+            <directory name="stubs"/>
+            <directory name="src/Templates"/>
+            <directory name="tests/Fixtures"/>
+        </ignoreFiles>
+    </projectFiles>
+
+    <plugins>
+        <pluginClass class="Psalm\LaravelPlugin\Plugin"/>
+    </plugins>
+
+    <issueHandlers>
+        <LessSpecificReturnType errorLevel="info"/>
+        <MoreSpecificReturnType errorLevel="info"/>
+        <MissingClosureReturnType errorLevel="info"/>
+        <MissingReturnType errorLevel="info"/>
+        <MissingPropertyType errorLevel="info"/>
+        <InvalidDocblock errorLevel="info"/>
+        <MissingDocblockType errorLevel="info"/>
+        <MissingParamType errorLevel="info"/>
+        <RedundantCondition errorLevel="info"/>
+
+        <!-- Laravel specific -->
+        <UndefinedClass>
+            <errorLevel type="suppress">
+                <file name="src/Commands/*.php"/>
+            </errorLevel>
+        </UndefinedClass>
+        <UndefinedMethod>
+            <errorLevel type="suppress">
+                <file name="src/Commands/*.php"/>
+            </errorLevel>
+        </UndefinedMethod>
+
+        <!-- Suppress errors for generated code -->
+        <MissingTemplateParam>
+            <errorLevel type="suppress">
+                <directory name="src/Generators"/>
+            </errorLevel>
+        </MissingTemplateParam>
+
+        <!-- Allow dynamic properties for Laravel models -->
+        <UndefinedMagicPropertyFetch>
+            <errorLevel type="suppress">
+                <directory name="src/Analyzers"/>
+            </errorLevel>
+        </UndefinedMagicPropertyFetch>
+    </issueHandlers>
+</psalm>

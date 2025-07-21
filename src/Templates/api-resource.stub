@@ -1,0 +1,187 @@
+<?php
+
+namespace {{ namespace }};
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Carbon;
+
+/**
+ * @OA\Schema(
+ *     schema="{{ model }}Resource",
+ *     description="{{ model }} resource representation",
+ *     type="object",
+ *     {{ resourceDocumentation }}
+ * )
+ */
+class {{ className }} extends JsonResource
+{
+    /**
+     * Transform the resource into an array.
+     *
+     * @param Request $request
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+        return [
+            // Primary identifier
+            '{{ primaryKey }}' => $this->{{ primaryKey }},
+            
+            // Basic attributes
+{{ resourceFields }}
+
+            // Computed attributes
+{{ computedFields }}
+
+            // Timestamps (conditionally included)
+            $this->mergeWhen($this->shouldIncludeTimestamps($request), [
+                'created_at' => $this->when($this->created_at, fn() => $this->formatTimestamp($this->created_at)),
+                'updated_at' => $this->when($this->updated_at, fn() => $this->formatTimestamp($this->updated_at)),
+{{ additionalTimestamps }}
+            ]),
+
+            // Relationships (conditionally loaded)
+{{ relationships }}
+
+            // Meta information
+            $this->mergeWhen($this->shouldIncludeMeta($request), [
+                'meta' => [
+                    'resource_type' => '{{ modelLower }}',
+                    'resource_version' => '{{ resourceVersion }}',
+{{ metaFields }}
+                ]
+            ]),
+
+            // Links (HATEOAS)
+            $this->mergeWhen($this->shouldIncludeLinks($request), [
+                'links' => $this->getResourceLinks($request)
+            ]),
+        ];
+    }
+
+{{ relationships }}
+
+{{ conditionalFields }}
+
+    /**
+     * Get additional data that should be returned with the resource array.
+     *
+     * @param Request $request
+     * @return array<string, mixed>
+     */
+    public function with(Request $request): array
+    {
+        return [
+            'meta' => [
+                'timestamp' => now()->toISOString(),
+                'timezone' => config('app.timezone'),
+{{ additionalMeta }}
+            ]
+        ];
+    }
+
+    /**
+     * Customize the outgoing response for the resource.
+     *
+     * @param Request $request
+     * @param \Illuminate\Http\JsonResponse $response
+     * @return void
+     */
+    public function withResponse(Request $request, $response)
+    {
+        {{ responseCustomization }}
+    }
+
+    /**
+     * Determine if timestamps should be included.
+     *
+     * @param Request $request
+     * @return bool
+     */
+    protected function shouldIncludeTimestamps(Request $request): bool
+    {
+        return $request->get('include_timestamps', true) || 
+               $request->has('include') && str_contains($request->get('include'), 'timestamps');
+    }
+
+    /**
+     * Determine if meta information should be included.
+     *
+     * @param Request $request
+     * @return bool
+     */
+    protected function shouldIncludeMeta(Request $request): bool
+    {
+        return $request->get('include_meta', false) || 
+               $request->has('include') && str_contains($request->get('include'), 'meta');
+    }
+
+    /**
+     * Determine if HATEOAS links should be included.
+     *
+     * @param Request $request
+     * @return bool
+     */
+    protected function shouldIncludeLinks(Request $request): bool
+    {
+        return $request->get('include_links', false) || 
+               $request->has('include') && str_contains($request->get('include'), 'links');
+    }
+
+    /**
+     * Format timestamp for API response.
+     *
+     * @param Carbon|null $timestamp
+     * @return string|null
+     */
+    protected function formatTimestamp($timestamp): ?string
+    {
+        if (!$timestamp instanceof Carbon) {
+            return null;
+        }
+
+        // Return ISO 8601 format with timezone
+        return $timestamp->toISOString();
+    }
+
+    /**
+     * Get HATEOAS links for the resource.
+     *
+     * @param Request $request
+     * @return array<string, string>
+     */
+    protected function getResourceLinks(Request $request): array
+    {
+        $baseUrl = $request->getSchemeAndHttpHost();
+        $resourceId = $this->{{ primaryKey }};
+
+        return [
+            'self' => "{$baseUrl}/{{ routePrefix }}{{ modelLowerPlural }}/{$resourceId}",
+            'edit' => "{$baseUrl}/{{ routePrefix }}{{ modelLowerPlural }}/{$resourceId}/edit",
+            'delete' => "{$baseUrl}/{{ routePrefix }}{{ modelLowerPlural }}/{$resourceId}",
+            'collection' => "{$baseUrl}/{{ routePrefix }}{{ modelLowerPlural }}",
+{{ additionalLinks }}
+        ];
+    }
+
+    /**
+     * Get the resource's permission-based attributes.
+     *
+     * @param Request $request
+     * @return array<string, mixed>
+     */
+    protected function getPermissionBasedAttributes(Request $request): array
+    {
+        $user = $request->user();
+        
+        return [
+            'can_edit' => $user?->can('update', $this->resource) ?? false,
+            'can_delete' => $user?->can('delete', $this->resource) ?? false,
+            'can_view' => $user?->can('view', $this->resource) ?? true,
+{{ additionalPermissions }}
+        ];
+    }
+
+{{ additionalMethods }}
+}

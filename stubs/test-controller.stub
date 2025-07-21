@@ -1,0 +1,306 @@
+<?php
+
+namespace Tests\Feature\Controllers{{ testNamespace }};
+
+use App\Models\{{ model }};
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\WithFaker;
+use Tests\TestCase;
+{{ additionalTestImports }}
+
+class {{ class }}Test extends TestCase
+{
+    use RefreshDatabase, WithFaker;
+
+    protected User $user;
+    protected {{ model }} ${{ modelVariable }};
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Create test user
+        $this->user = User::factory()->create();
+
+        // Create test {{ modelLower }}
+        $this->{{ modelVariable }} = {{ model }}::factory()->create({{ factoryAttributes }});
+
+        {{ additionalSetup }}
+    }
+
+    /** @test */
+    public function it_can_display_{{ modelLowerPlural }}_index()
+    {
+        {{ indexAuthSetup }}
+
+        // Create additional test data
+        {{ model }}::factory()->count(5)->create();
+
+        $response = $this->{{ indexAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}');
+
+        $response->assertStatus(200);
+        {{ indexViewAssertions }}
+        {{ indexContentAssertions }}
+    }
+
+    /** @test */
+    public function it_can_display_{{ modelLowerPlural }}_index_with_search()
+    {
+        {{ indexAuthSetup }}
+
+        // Create {{ modelLowerPlural }} with searchable content
+        $searchable{{ model }} = {{ model }}::factory()->create([
+            {{ searchableAttributes }}
+        ]);
+
+        $response = $this->{{ indexAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}?search=' . urlencode('{{ searchTerm }}'));
+
+        $response->assertStatus(200);
+        {{ searchAssertions }}
+    }
+
+    /** @test */
+    public function it_can_display_{{ modelLowerPlural }}_index_with_pagination()
+    {
+        {{ indexAuthSetup }}
+
+        // Create more than per_page items
+        {{ model }}::factory()->count(25)->create();
+
+        $response = $this->{{ indexAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}?per_page=10&page=2');
+
+        $response->assertStatus(200);
+        {{ paginationAssertions }}
+    }
+
+    /** @test */
+    public function it_can_show_create_{{ modelLower }}_form()
+    {
+        {{ createAuthSetup }}
+
+        $response = $this->{{ createAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}/create');
+
+        $response->assertStatus(200);
+        {{ createViewAssertions }}
+        {{ createFormAssertions }}
+    }
+
+    /** @test */
+    public function it_can_store_a_new_{{ modelLower }}()
+    {
+        {{ storeAuthSetup }}
+
+        ${{ modelVariable }}Data = {{ model }}::factory()->make({{ storeFactoryAttributes }})->toArray();
+        {{ storeDataProcessing }}
+
+        $response = $this->{{ storeAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}', ${{ modelVariable }}Data);
+
+        {{ storeResponseAssertions }}
+        
+        $this->assertDatabaseHas('{{ tableName }}', [
+            {{ storeDbAssertions }}
+        ]);
+
+        {{ storeAdditionalAssertions }}
+    }
+
+    /** @test */
+    public function it_validates_{{ modelLower }}_data_when_storing()
+    {
+        {{ storeAuthSetup }}
+
+        $invalidData = [
+            {{ invalidStoreData }}
+        ];
+
+        $response = $this->{{ storeAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}', $invalidData);
+
+        {{ storeValidationAssertions }}
+    }
+
+    /** @test */
+    public function it_can_show_{{ modelLower }}_details()
+    {
+        {{ showAuthSetup }}
+
+        $response = $this->{{ showAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}/' . $this->{{ modelVariable }}->{{ primaryKey }});
+
+        $response->assertStatus(200);
+        {{ showViewAssertions }}
+        {{ showContentAssertions }}
+    }
+
+    /** @test */
+    public function it_returns_404_for_non_existent_{{ modelLower }}()
+    {
+        {{ showAuthSetup }}
+
+        $response = $this->{{ showAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}/999999');
+
+        {{ show404Assertions }}
+    }
+
+    /** @test */
+    public function it_can_show_edit_{{ modelLower }}_form()
+    {
+        {{ editAuthSetup }}
+
+        $response = $this->{{ editAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}/' . $this->{{ modelVariable }}->{{ primaryKey }} . '/edit');
+
+        $response->assertStatus(200);
+        {{ editViewAssertions }}
+        {{ editFormAssertions }}
+    }
+
+    /** @test */
+    public function it_can_update_a_{{ modelLower }}()
+    {
+        {{ updateAuthSetup }}
+
+        $updateData = [
+            {{ updateTestData }}
+        ];
+
+        $response = $this->{{ updateAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}/' . $this->{{ modelVariable }}->{{ primaryKey }}, $updateData);
+
+        {{ updateResponseAssertions }}
+
+        $this->assertDatabaseHas('{{ tableName }}', array_merge([
+            '{{ primaryKey }}' => $this->{{ modelVariable }}->{{ primaryKey }}
+        ], $updateData));
+
+        {{ updateAdditionalAssertions }}
+    }
+
+    /** @test */
+    public function it_validates_{{ modelLower }}_data_when_updating()
+    {
+        {{ updateAuthSetup }}
+
+        $invalidData = [
+            {{ invalidUpdateData }}
+        ];
+
+        $response = $this->{{ updateAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}/' . $this->{{ modelVariable }}->{{ primaryKey }}, $invalidData);
+
+        {{ updateValidationAssertions }}
+    }
+
+    /** @test */
+    public function it_can_delete_a_{{ modelLower }}()
+    {
+        {{ deleteAuthSetup }}
+
+        ${{ modelVariable }}Id = $this->{{ modelVariable }}->{{ primaryKey }};
+
+        $response = $this->{{ deleteAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}/' . ${{ modelVariable }}Id);
+
+        {{ deleteResponseAssertions }}
+
+        {{ deleteDbAssertions }}
+
+        {{ deleteAdditionalAssertions }}
+    }
+
+    {{ authorizationTests }}
+
+    {{ relationshipTests }}
+
+    {{ bulkOperationTests }}
+
+    /** @test */
+    public function it_handles_mass_assignment_protection()
+    {
+        {{ storeAuthSetup }}
+
+        $dataWithGuardedFields = [
+            {{ massAssignmentTestData }}
+        ];
+
+        $response = $this->{{ storeAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}', $dataWithGuardedFields);
+
+        {{ massAssignmentAssertions }}
+    }
+
+    /** @test */
+    public function it_respects_soft_deletes()
+    {
+        {{ softDeleteTest }}
+    }
+
+    /** @test */
+    public function it_logs_important_actions()
+    {
+        {{ logTestSetup }}
+
+        // Test creation logging
+        ${{ modelVariable }}Data = {{ model }}::factory()->make()->toArray();
+        $this->{{ storeAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}', ${{ modelVariable }}Data);
+
+        {{ logAssertions }}
+    }
+
+    /** @test */
+    public function it_handles_database_errors_gracefully()
+    {
+        {{ errorHandlingSetup }}
+
+        // Simulate database error by providing invalid foreign key
+        $invalidData = [
+            {{ invalidForeignKeyData }}
+        ];
+
+        $response = $this->{{ storeAuthMethod }}('/{{ routePrefix }}{{ modelLowerPlural }}', $invalidData);
+
+        {{ errorHandlingAssertions }}
+    }
+
+    /** @test */
+    public function it_applies_correct_middleware()
+    {
+        {{ middlewareTestSetup }}
+
+        // Test without authentication
+        $response = $this->get('/{{ routePrefix }}{{ modelLowerPlural }}');
+        {{ middlewareAssertions }}
+    }
+
+    {{ performanceTests }}
+
+    {{ apiSpecificTests }}
+
+    {{ webSpecificTests }}
+
+    /**
+     * Helper method to create authenticated request.
+     */
+    protected function actingAsUser(): self
+    {
+        return $this->actingAs($this->user);
+    }
+
+    /**
+     * Helper method to create {{ modelLower }} with relationships.
+     */
+    protected function create{{ model }}WithRelationships(): {{ model }}
+    {
+        return {{ model }}::factory()
+            {{ relationshipFactories }}
+            ->create();
+    }
+
+    /**
+     * Helper method to assert {{ modelLower }} JSON structure.
+     */
+    protected function assert{{ model }}JsonStructure($response, {{ model }} ${{ modelVariable }} = null): void
+    {
+        ${{ modelVariable }} = ${{ modelVariable }} ?: $this->{{ modelVariable }};
+        
+        $response->assertJsonStructure([
+            {{ expectedJsonStructure }}
+        ]);
+    }
+
+    {{ additionalHelperMethods }}
+}

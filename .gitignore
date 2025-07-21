@@ -1,0 +1,62 @@
+# Dependencies
+/vendor/
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+/build/
+/coverage/
+.phpunit.cache/
+.phpunit.result.cache
+
+# Environment files
+.env
+.env.local
+.env.testing
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Composer
+composer.lock
+composer.phar
+
+# PHPUnit
+phpunit.xml.dist
+.phpunit.result.cache
+
+# Laravel Mix
+/public/hot
+/public/storage
+/storage/*.key
+
+# Package development
+.php_cs.cache
+.php-cs-fixer.cache
+.psalm/cache/
+.rector/cache/
+.infection/
+infection.log
+infection.html
+infection-summary.log
+infection.json
+infection-per-mutator.md
+
+# Testing
+tests/_output/
+tests/_support/_generated
+
+# Documentation
+docs/_build/

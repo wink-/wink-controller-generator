@@ -1,0 +1,423 @@
+<?php
+
+namespace {{ namespace }};
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Store{{ model }}Request;
+use App\Http\Requests\Update{{ model }}Request;
+use App\Models\{{ model }};
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+use Throwable;
+
+class {{ class }} extends Controller
+{
+    public function __construct()
+    {
+        $this->middleware([{{ middleware }}]);
+        {{ authorizationMiddleware }}
+    }
+
+    /**
+     * Display a listing of {{ modelLowerPlural }}.
+     *
+     * @param Request $request
+     * @return View
+     */
+    public function index(Request $request): View
+    {
+        try {
+            {{ indexAuthorization }}
+
+            $request->validate([
+                'per_page' => 'integer|min:1|max:100',
+                'page' => 'integer|min:1',
+                'search' => 'string|max:255',
+                'sort_by' => 'string|in:{{ sortableFieldsList }}',
+                'sort_direction' => 'string|in:asc,desc',
+                {{ indexValidationRules }}
+            ]);
+
+            $query = {{ model }}::query();
+
+            // Apply search functionality
+            if ($request->filled('search')) {
+                $searchTerm = $request->search;
+                $query->where(function ($q) use ($searchTerm) {
+                    {{ searchFields }}
+                });
+            }
+
+            // Apply filters
+            {{ indexFilters }}
+
+            // Apply sorting
+            $sortBy = $request->get('sort_by', '{{ defaultSortField }}');
+            $sortDirection = $request->get('sort_direction', 'asc');
+            $query->orderBy($sortBy, $sortDirection);
+
+            // Apply eager loading for performance
+            {{ eagerLoading }}
+
+            $perPage = min($request->get('per_page', 15), 100);
+            ${{ modelLowerPlural }} = $query->paginate($perPage)->withQueryString();
+
+            return view('{{ modelLowerPlural }}.index', [
+                '{{ modelLowerPlural }}' => ${{ modelLowerPlural }},
+                'search' => $request->search,
+                'sortBy' => $sortBy,
+                'sortDirection' => $sortDirection,
+                {{ additionalIndexData }}
+            ]);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized access attempt to {{ modelLowerPlural }} index', [
+                'user_id' => auth()->id(),
+                'ip' => $request->ip(),
+            ]);
+
+            return redirect()
+                ->back()
+                ->with('error', 'You are not authorized to view {{ modelLowerPlural }}.');
+
+        } catch (ValidationException $e) {
+            return redirect()
+                ->back()
+                ->withErrors($e->errors())
+                ->withInput();
+
+        } catch (Throwable $e) {
+            Log::error('Error fetching {{ modelLowerPlural }} for web view', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+            ]);
+
+            return redirect()
+                ->back()
+                ->with('error', 'An error occurred while loading {{ modelLowerPlural }}.');
+        }
+    }
+
+    /**
+     * Show the form for creating a new {{ modelLower }}.
+     *
+     * @return View|RedirectResponse
+     */
+    public function create()
+    {
+        try {
+            {{ createAuthorization }}
+
+            return view('{{ modelLowerPlural }}.create', [
+                {{ createViewData }}
+            ]);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to access {{ modelLower }} create form', [
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', 'You are not authorized to create {{ modelLowerPlural }}.');
+
+        } catch (Throwable $e) {
+            Log::error('Error loading {{ modelLower }} create form', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', 'An error occurred while loading the create form.');
+        }
+    }
+
+    /**
+     * Store a newly created {{ modelLower }}.
+     *
+     * @param Store{{ model }}Request $request
+     * @return RedirectResponse
+     */
+    public function store(Store{{ model }}Request $request): RedirectResponse
+    {
+        try {
+            $data = $request->validated();
+            {{ storeDataProcessing }}
+
+            ${{ modelLower }} = {{ model }}::create($data);
+            {{ postStoreActions }}
+
+            Log::info('{{ model }} created successfully via web interface', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('success', '{{ model }} created successfully.');
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to create {{ modelLower }} via web', [
+                'user_id' => auth()->id(),
+                'ip' => $request->ip(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', 'You are not authorized to create {{ modelLowerPlural }}.');
+
+        } catch (ValidationException $e) {
+            return redirect()
+                ->back()
+                ->withErrors($e->errors())
+                ->withInput()
+                ->with('error', 'Please correct the errors below.');
+
+        } catch (Throwable $e) {
+            Log::error('Error creating {{ modelLower }} via web interface', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+                'data' => $request->validated(),
+            ]);
+
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'An error occurred while creating the {{ modelLower }}. Please try again.');
+        }
+    }
+
+    /**
+     * Display the specified {{ modelLower }}.
+     *
+     * @param {{ model }} ${{ modelLower }}
+     * @return View|RedirectResponse
+     */
+    public function show({{ model }} ${{ modelLower }})
+    {
+        try {
+            {{ showAuthorization }}
+
+            // Load relationships for complete view
+            ${{ modelLower }}->load([{{ showRelationships }}]);
+
+            return view('{{ modelLowerPlural }}.show', [
+                '{{ modelLower }}' => ${{ modelLower }},
+                {{ additionalShowData }}
+            ]);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized access attempt to {{ modelLower }} details', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', 'You are not authorized to view this {{ modelLower }}.');
+
+        } catch (ModelNotFoundException $e) {
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', '{{ model }} not found.');
+
+        } catch (Throwable $e) {
+            Log::error('Error showing {{ modelLower }} via web interface', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', 'An error occurred while loading the {{ modelLower }}.');
+        }
+    }
+
+    /**
+     * Show the form for editing the specified {{ modelLower }}.
+     *
+     * @param {{ model }} ${{ modelLower }}
+     * @return View|RedirectResponse
+     */
+    public function edit({{ model }} ${{ modelLower }})
+    {
+        try {
+            {{ editAuthorization }}
+
+            // Load relationships needed for the edit form
+            ${{ modelLower }}->load([{{ editRelationships }}]);
+
+            return view('{{ modelLowerPlural }}.edit', [
+                '{{ modelLower }}' => ${{ modelLower }},
+                {{ editViewData }}
+            ]);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to access {{ modelLower }} edit form', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('error', 'You are not authorized to edit this {{ modelLower }}.');
+
+        } catch (ModelNotFoundException $e) {
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', '{{ model }} not found.');
+
+        } catch (Throwable $e) {
+            Log::error('Error loading {{ modelLower }} edit form', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('error', 'An error occurred while loading the edit form.');
+        }
+    }
+
+    /**
+     * Update the specified {{ modelLower }}.
+     *
+     * @param Update{{ model }}Request $request
+     * @param {{ model }} ${{ modelLower }}
+     * @return RedirectResponse
+     */
+    public function update(Update{{ model }}Request $request, {{ model }} ${{ modelLower }}): RedirectResponse
+    {
+        try {
+            $data = $request->validated();
+            {{ updateDataProcessing }}
+
+            $originalData = ${{ modelLower }}->toArray();
+            ${{ modelLower }}->update($data);
+            {{ postUpdateActions }}
+
+            Log::info('{{ model }} updated successfully via web interface', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'changes' => ${{ modelLower }}->getChanges(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('success', '{{ model }} updated successfully.');
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to update {{ modelLower }} via web', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'ip' => $request->ip(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('error', 'You are not authorized to update this {{ modelLower }}.');
+
+        } catch (ModelNotFoundException $e) {
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', '{{ model }} not found.');
+
+        } catch (ValidationException $e) {
+            return redirect()
+                ->back()
+                ->withErrors($e->errors())
+                ->withInput()
+                ->with('error', 'Please correct the errors below.');
+
+        } catch (Throwable $e) {
+            Log::error('Error updating {{ modelLower }} via web interface', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'data' => $request->validated(),
+            ]);
+
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'An error occurred while updating the {{ modelLower }}. Please try again.');
+        }
+    }
+
+    /**
+     * Remove the specified {{ modelLower }}.
+     *
+     * @param {{ model }} ${{ modelLower }}
+     * @return RedirectResponse
+     */
+    public function destroy({{ model }} ${{ modelLower }}): RedirectResponse
+    {
+        try {
+            {{ destroyAuthorization }}
+
+            // Check for existing relationships that would prevent deletion
+            {{ relationshipChecks }}
+
+            {{ preDeleteActions }}
+            
+            {{ softDeleteCheck }}${{ modelLower }}->delete();
+            {{ postDeleteActions }}
+
+            Log::info('{{ model }} deleted successfully via web interface', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('success', '{{ model }} deleted successfully.');
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to delete {{ modelLower }} via web', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('error', 'You are not authorized to delete this {{ modelLower }}.');
+
+        } catch (ModelNotFoundException $e) {
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('error', '{{ model }} not found.');
+
+        } catch (Throwable $e) {
+            Log::error('Error deleting {{ modelLower }} via web interface', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('error', 'An error occurred while deleting the {{ modelLower }}. Please try again.');
+        }
+    }
+
+    {{ additionalMethods }}
+}

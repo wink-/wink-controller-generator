@@ -1,0 +1,129 @@
+@extends('{{ layoutTemplate }}')
+
+@section('title', 'Create {{ model }}')
+
+@section('content')
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <!-- Page Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">Create {{ model }}</h1>
+                <a href="{{ route('{{ modelLowerPlural }}.index') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to {{ modelPlural }}
+                </a>
+            </div>
+
+            <!-- Create Form -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">{{ model }} Information</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ route('{{ modelLowerPlural }}.store') }}" {{ formAttributes }}>
+                        @csrf
+
+                        {{ formFields }}
+
+                        <!-- Form Actions -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="d-flex justify-content-between">
+                                    <button type="button" 
+                                            class="btn btn-outline-secondary" 
+                                            onclick="window.history.back()">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                    
+                                    <div>
+                                        <button type="reset" class="btn btn-outline-warning me-2">
+                                            <i class="fas fa-undo"></i> Reset
+                                        </button>
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-save"></i> Create {{ model }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Help Text -->
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <i class="fas fa-info-circle text-info"></i> Help
+                    </h6>
+                    <p class="card-text text-muted small">
+                        {{ helpText }}
+                    </p>
+                    {{ additionalHelp }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection
+
+@push('styles')
+<style>
+    .form-control:focus,
+    .form-select:focus {
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+
+    .invalid-feedback {
+        display: block;
+    }
+
+    .required::after {
+        content: " *";
+        color: #dc3545;
+    }
+
+    {{ customStyles }}
+</style>
+@endpush
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Form validation enhancement
+    const form = document.querySelector('form');
+    
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const submitButton = form.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+            }
+        });
+
+        // Reset button functionality
+        const resetButton = form.querySelector('button[type="reset"]');
+        if (resetButton) {
+            resetButton.addEventListener('click', function() {
+                // Clear validation errors
+                form.querySelectorAll('.is-invalid').forEach(element => {
+                    element.classList.remove('is-invalid');
+                });
+                
+                form.querySelectorAll('.invalid-feedback').forEach(element => {
+                    element.style.display = 'none';
+                });
+            });
+        }
+    }
+
+    {{ relationshipScripts }}
+
+    {{ validationScripts }}
+
+    {{ customScripts }}
+});
+</script>
+@endpush

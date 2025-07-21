@@ -1,0 +1,43 @@
+includes:
+    - vendor/nunomaduro/larastan/extension.neon
+
+parameters:
+    level: 9
+    paths:
+        - src
+    tmpDir: build/phpstan
+    checkOctaneCompatibility: true
+    checkModelProperties: true
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+    treatPhpDocTypesAsCertain: false
+    
+    # Laravel-specific settings
+    checkNullables: true
+    checkTooWideReturnTypesInProtectedAndPublicMethods: true
+    checkUninitializedProperties: true
+    checkDynamicProperties: false
+    
+    # Exclude paths
+    excludePaths:
+        - tests/Fixtures/*
+        - stubs/*
+        - src/Templates/*
+        - build/*
+        - vendor/*
+    
+    # Ignore specific errors for generated code
+    ignoreErrors:
+        - '#Cannot call method .* on .*#'
+        - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder#'
+        - '#Dynamic property .* is deprecated#'
+        
+    # Custom rules for controller generation
+    rules:
+        - Wink\ControllerGenerator\PHPStan\Rules\ControllerMethodRule
+        - Wink\ControllerGenerator\PHPStan\Rules\StubTemplateRule
+    
+    # Stub files configuration
+    stubFiles:
+        - stubs/illuminate.stub
+        - stubs/laravel.stub

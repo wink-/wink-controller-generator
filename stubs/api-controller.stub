@@ -1,0 +1,643 @@
+<?php
+
+namespace {{ namespace }};
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Store{{ model }}Request;
+use App\Http\Requests\Update{{ model }}Request;
+use App\Http\Resources\{{ model }}Resource;
+use App\Models\{{ model }};
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Throwable;
+
+/**
+ * @OA\Tag(
+ *     name="{{ model }}",
+ *     description="{{ model }} management endpoints"
+ * )
+ */
+class {{ class }} extends Controller
+{
+    public function __construct()
+    {
+        $this->middleware([{{ middleware }}]);
+        {{ authorizationMiddleware }}
+    }
+
+    /**
+     * Display a listing of {{ modelLowerPlural }}.
+     *
+     * @OA\Get(
+     *     path="/api/{{ modelLowerPlural }}",
+     *     summary="Get paginated list of {{ modelLowerPlural }}",
+     *     description="Retrieve a paginated list of {{ modelLowerPlural }} with optional search, filtering, and sorting",
+     *     operationId="get{{ model }}List",
+     *     tags={"{{ model }}"},
+     *     security={{"bearerAuth": {}}},
+     *     @OA\Parameter(
+     *         name="page",
+     *         in="query",
+     *         description="Page number",
+     *         required=false,
+     *         @OA\Schema(type="integer", minimum=1, default=1)
+     *     ),
+     *     @OA\Parameter(
+     *         name="per_page",
+     *         in="query",
+     *         description="Items per page",
+     *         required=false,
+     *         @OA\Schema(type="integer", minimum=1, maximum=100, default=15)
+     *     ),
+     *     @OA\Parameter(
+     *         name="search",
+     *         in="query",
+     *         description="Search term for filtering results",
+     *         required=false,
+     *         @OA\Schema(type="string", maxLength=255)
+     *     ),
+     *     @OA\Parameter(
+     *         name="sort_by",
+     *         in="query",
+     *         description="Field to sort by",
+     *         required=false,
+     *         @OA\Schema(type="string", enum={{ sortableFields }})
+     *     ),
+     *     @OA\Parameter(
+     *         name="sort_direction",
+     *         in="query",
+     *         description="Sort direction",
+     *         required=false,
+     *         @OA\Schema(type="string", enum={"asc", "desc"}, default="asc")
+     *     ),
+     *     {{ filterParameters }}
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *         @OA\JsonContent(
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="array",
+     *                 @OA\Items(ref="#/components/schemas/{{ model }}Resource")
+     *             ),
+     *             @OA\Property(
+     *                 property="meta",
+     *                 type="object",
+     *                 @OA\Property(property="current_page", type="integer"),
+     *                 @OA\Property(property="last_page", type="integer"),
+     *                 @OA\Property(property="per_page", type="integer"),
+     *                 @OA\Property(property="total", type="integer")
+     *             ),
+     *             @OA\Property(
+     *                 property="links",
+     *                 type="object",
+     *                 @OA\Property(property="first", type="string"),
+     *                 @OA\Property(property="last", type="string"),
+     *                 @OA\Property(property="prev", type="string", nullable=true),
+     *                 @OA\Property(property="next", type="string", nullable=true)
+     *             )
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Unauthenticated",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=403,
+     *         description="Forbidden",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="This action is unauthorized.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="errors", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Internal Server Error")
+     *         )
+     *     )
+     * )
+     */
+    public function index(Request $request): JsonResponse
+    {
+        try {
+            {{ indexAuthorization }}
+
+            $request->validate([
+                'per_page' => 'integer|min:1|max:100',
+                'page' => 'integer|min:1',
+                'search' => 'string|max:255',
+                'sort_by' => 'string|in:{{ sortableFieldsList }}',
+                'sort_direction' => 'string|in:asc,desc',
+                {{ indexValidationRules }}
+            ]);
+
+            $query = {{ model }}::query();
+
+            // Apply search functionality
+            if ($request->filled('search')) {
+                $searchTerm = $request->search;
+                $query->where(function ($q) use ($searchTerm) {
+                    {{ searchFields }}
+                });
+            }
+
+            // Apply filters
+            {{ indexFilters }}
+
+            // Apply sorting
+            $sortBy = $request->get('sort_by', '{{ defaultSortField }}');
+            $sortDirection = $request->get('sort_direction', 'asc');
+            $query->orderBy($sortBy, $sortDirection);
+
+            // Apply eager loading for performance
+            {{ eagerLoading }}
+
+            $perPage = min($request->get('per_page', 15), 100);
+            ${{ modelLowerPlural }} = $query->paginate($perPage);
+
+            return {{ model }}Resource::collection(${{ modelLowerPlural }})
+                ->response()
+                ->setStatusCode(200);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized access attempt to {{ modelLowerPlural }} index', [
+                'user_id' => auth()->id(),
+                'ip' => $request->ip(),
+            ]);
+            
+            return response()->json([
+                'message' => 'This action is unauthorized.'
+            ], 403);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (Throwable $e) {
+            Log::error('Error fetching {{ modelLowerPlural }}', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while fetching {{ modelLowerPlural }}.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Store a newly created {{ modelLower }}.
+     *
+     * @OA\Post(
+     *     path="/api/{{ modelLowerPlural }}",
+     *     summary="Create a new {{ modelLower }}",
+     *     description="Store a newly created {{ modelLower }} in storage",
+     *     operationId="store{{ model }}",
+     *     tags={"{{ model }}"},
+     *     security={{"bearerAuth": {}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         description="{{ model }} data",
+     *         @OA\JsonContent(ref="#/components/schemas/Store{{ model }}Request")
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="{{ model }} created successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/{{ model }}Resource"),
+     *             @OA\Property(property="message", type="string", example="{{ model }} created successfully")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Unauthenticated",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=403,
+     *         description="Forbidden",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="This action is unauthorized.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="errors", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Internal Server Error")
+     *         )
+     *     )
+     * )
+     */
+    public function store(Store{{ model }}Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validated();
+            {{ storeDataProcessing }}
+
+            ${{ modelLower }} = {{ model }}::create($data);
+            {{ postStoreActions }}
+
+            Log::info('{{ model }} created successfully', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'data' => new {{ model }}Resource(${{ modelLower }}{{ storeRelationships }}),
+                'message' => '{{ model }} created successfully'
+            ], 201);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to create {{ modelLower }}', [
+                'user_id' => auth()->id(),
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'message' => 'This action is unauthorized.'
+            ], 403);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (Throwable $e) {
+            Log::error('Error creating {{ modelLower }}', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => auth()->id(),
+                'data' => $request->validated(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while creating the {{ modelLower }}.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Display the specified {{ modelLower }}.
+     *
+     * @OA\Get(
+     *     path="/api/{{ modelLowerPlural }}/{id}",
+     *     summary="Get a specific {{ modelLower }}",
+     *     description="Retrieve details of a specific {{ modelLower }}",
+     *     operationId="show{{ model }}",
+     *     tags={"{{ model }}"},
+     *     security={{"bearerAuth": {}}},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         description="{{ model }} ID",
+     *         required=true,
+     *         @OA\Schema(type="{{ primaryKeyType }}")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/{{ model }}Resource")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Unauthenticated",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=403,
+     *         description="Forbidden",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="This action is unauthorized.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="{{ model }} not found",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="{{ model }} not found")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Internal Server Error")
+     *         )
+     *     )
+     * )
+     */
+    public function show({{ model }} ${{ modelLower }}): JsonResponse
+    {
+        try {
+            {{ showAuthorization }}
+
+            // Load relationships for complete resource representation
+            ${{ modelLower }}->load([{{ showRelationships }}]);
+
+            return response()->json([
+                'data' => new {{ model }}Resource(${{ modelLower }})
+            ], 200);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized access attempt to {{ modelLower }}', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+            ]);
+
+            return response()->json([
+                'message' => 'This action is unauthorized.'
+            ], 403);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => '{{ model }} not found'
+            ], 404);
+
+        } catch (Throwable $e) {
+            Log::error('Error showing {{ modelLower }}', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while retrieving the {{ modelLower }}.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update the specified {{ modelLower }}.
+     *
+     * @OA\Put(
+     *     path="/api/{{ modelLowerPlural }}/{id}",
+     *     summary="Update a {{ modelLower }}",
+     *     description="Update the specified {{ modelLower }} in storage",
+     *     operationId="update{{ model }}",
+     *     tags={"{{ model }}"},
+     *     security={{"bearerAuth": {}}},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         description="{{ model }} ID",
+     *         required=true,
+     *         @OA\Schema(type="{{ primaryKeyType }}")
+     *     ),
+     *     @OA\RequestBody(
+     *         required=true,
+     *         description="Updated {{ modelLower }} data",
+     *         @OA\JsonContent(ref="#/components/schemas/Update{{ model }}Request")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="{{ model }} updated successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/{{ model }}Resource"),
+     *             @OA\Property(property="message", type="string", example="{{ model }} updated successfully")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Unauthenticated",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=403,
+     *         description="Forbidden",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="This action is unauthorized.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="{{ model }} not found",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="{{ model }} not found")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="errors", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Internal Server Error")
+     *         )
+     *     )
+     * )
+     */
+    public function update(Update{{ model }}Request $request, {{ model }} ${{ modelLower }}): JsonResponse
+    {
+        try {
+            $data = $request->validated();
+            {{ updateDataProcessing }}
+
+            $originalData = ${{ modelLower }}->toArray();
+            ${{ modelLower }}->update($data);
+            {{ postUpdateActions }}
+
+            Log::info('{{ model }} updated successfully', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'changes' => ${{ modelLower }}->getChanges(),
+            ]);
+
+            return response()->json([
+                'data' => new {{ model }}Resource(${{ modelLower }}->fresh([{{ updateRelationships }}])),
+                'message' => '{{ model }} updated successfully'
+            ], 200);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to update {{ modelLower }}', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'message' => 'This action is unauthorized.'
+            ], 403);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => '{{ model }} not found'
+            ], 404);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (Throwable $e) {
+            Log::error('Error updating {{ modelLower }}', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'data' => $request->validated(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while updating the {{ modelLower }}.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove the specified {{ modelLower }}.
+     *
+     * @OA\Delete(
+     *     path="/api/{{ modelLowerPlural }}/{id}",
+     *     summary="Delete a {{ modelLower }}",
+     *     description="Remove the specified {{ modelLower }} from storage",
+     *     operationId="delete{{ model }}",
+     *     tags={"{{ model }}"},
+     *     security={{"bearerAuth": {}}},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         description="{{ model }} ID",
+     *         required=true,
+     *         @OA\Schema(type="{{ primaryKeyType }}")
+     *     ),
+     *     @OA\Response(
+     *         response=204,
+     *         description="{{ model }} deleted successfully"
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Unauthenticated",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=403,
+     *         description="Forbidden",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="This action is unauthorized.")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="{{ model }} not found",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="{{ model }} not found")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=409,
+     *         description="Conflict - Cannot delete {{ modelLower }} with existing relationships",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Cannot delete {{ modelLower }} with existing relationships")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Internal Server Error")
+     *         )
+     *     )
+     * )
+     */
+    public function destroy({{ model }} ${{ modelLower }}): JsonResponse
+    {
+        try {
+            {{ destroyAuthorization }}
+
+            // Check for existing relationships that would prevent deletion
+            {{ relationshipChecks }}
+
+            {{ preDeleteActions }}
+            
+            {{ softDeleteCheck }}${{ modelLower }}->delete();
+            {{ postDeleteActions }}
+
+            Log::info('{{ model }} deleted successfully', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => '{{ model }} deleted successfully'
+            ], 204);
+
+        } catch (AuthorizationException $e) {
+            Log::warning('Unauthorized attempt to delete {{ modelLower }}', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+            ]);
+
+            return response()->json([
+                'message' => 'This action is unauthorized.'
+            ], 403);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => '{{ model }} not found'
+            ], 404);
+
+        } catch (Throwable $e) {
+            Log::error('Error deleting {{ modelLower }}', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'An error occurred while deleting the {{ modelLower }}.'
+            ], 500);
+        }
+    }
+
+    {{ additionalMethods }}
+}

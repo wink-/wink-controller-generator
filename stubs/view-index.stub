@@ -1,0 +1,245 @@
+@extends('{{ layoutTemplate }}')
+
+@section('title', '{{ modelPlural }}')
+
+@section('content')
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-12">
+            <!-- Page Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">{{ modelPlural }}</h1>
+                @can('create', App\Models\{{ model }}::class)
+                    <a href="{{ route('{{ modelLowerPlural }}.create') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create {{ model }}
+                    </a>
+                @endcan
+            </div>
+
+            <!-- Search and Filters -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <form method="GET" action="{{ route('{{ modelLowerPlural }}.index') }}" class="row g-3">
+                        <!-- Search -->
+                        <div class="col-md-4">
+                            <label for="search" class="form-label">Search</label>
+                            <input 
+                                type="text" 
+                                class="form-control" 
+                                id="search" 
+                                name="search" 
+                                value="{{ request('search') }}" 
+                                placeholder="Search {{ modelLowerPlural }}..."
+                            >
+                        </div>
+
+                        <!-- Sort By -->
+                        <div class="col-md-3">
+                            <label for="sort_by" class="form-label">Sort By</label>
+                            <select class="form-select" id="sort_by" name="sort_by">
+                                {{ sortOptions }}
+                            </select>
+                        </div>
+
+                        <!-- Sort Direction -->
+                        <div class="col-md-2">
+                            <label for="sort_direction" class="form-label">Order</label>
+                            <select class="form-select" id="sort_direction" name="sort_direction">
+                                <option value="asc" {{ request('sort_direction') === 'asc' ? 'selected' : '' }}>Ascending</option>
+                                <option value="desc" {{ request('sort_direction') === 'desc' ? 'selected' : '' }}>Descending</option>
+                            </select>
+                        </div>
+
+                        <!-- Per Page -->
+                        <div class="col-md-2">
+                            <label for="per_page" class="form-label">Per Page</label>
+                            <select class="form-select" id="per_page" name="per_page">
+                                <option value="15" {{ request('per_page') == 15 ? 'selected' : '' }}>15</option>
+                                <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
+                                <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
+                                <option value="100" {{ request('per_page') == 100 ? 'selected' : '' }}>100</option>
+                            </select>
+                        </div>
+
+                        <!-- Filters -->
+                        {{ additionalFilters }}
+
+                        <!-- Actions -->
+                        <div class="col-md-1">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-outline-primary">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    @if(request()->hasAny(['search', 'sort_by', 'sort_direction', {{ filterParameters }}]))
+                        <div class="mt-2">
+                            <a href="{{ route('{{ modelLowerPlural }}.index') }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-times"></i> Clear Filters
+                            </a>
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            <!-- Results Summary -->
+            @if(${{ modelLowerPlural }}->total() > 0)
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    Showing {{ ${{ modelLowerPlural }}->firstItem() }} to {{ ${{ modelLowerPlural }}->lastItem() }} of {{ ${{ modelLowerPlural }}->total() }} {{ modelLowerPlural }}
+                    @if(request('search'))
+                        for "<strong>{{ request('search') }}</strong>"
+                    @endif
+                </div>
+            @endif
+
+            <!-- {{ modelPlural }} Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">{{ modelPlural }} List</h5>
+                </div>
+                <div class="card-body p-0">
+                    @if(${{ modelLowerPlural }}->count() > 0)
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        {{ tableHeaders }}
+                                        <th scope="col" width="150">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach(${{ modelLowerPlural }} as ${{ modelVariable }})
+                                        <tr>
+                                            {{ tableColumns }}
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    @can('view', ${{ modelVariable }})
+                                                        <a href="{{ route('{{ modelLowerPlural }}.show', ${{ modelVariable }}) }}" 
+                                                           class="btn btn-sm btn-outline-primary" 
+                                                           title="View">
+                                                            <i class="fas fa-eye"></i>
+                                                        </a>
+                                                    @endcan
+
+                                                    @can('update', ${{ modelVariable }})
+                                                        <a href="{{ route('{{ modelLowerPlural }}.edit', ${{ modelVariable }}) }}" 
+                                                           class="btn btn-sm btn-outline-secondary" 
+                                                           title="Edit">
+                                                            <i class="fas fa-edit"></i>
+                                                        </a>
+                                                    @endcan
+
+                                                    @can('delete', ${{ modelVariable }})
+                                                        <form method="POST" 
+                                                              action="{{ route('{{ modelLowerPlural }}.destroy', ${{ modelVariable }}) }}" 
+                                                              class="d-inline"
+                                                              onsubmit="return confirm('Are you sure you want to delete this {{ modelLower }}?')">
+                                                            @csrf
+                                                            @method('DELETE')
+                                                            <button type="submit" 
+                                                                    class="btn btn-sm btn-outline-danger" 
+                                                                    title="Delete">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </form>
+                                                    @endcan
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        <div class="card-footer">
+                            {{ ${{ modelLowerPlural }}->links() }}
+                        </div>
+                    @else
+                        <div class="text-center py-5">
+                            <div class="mb-3">
+                                <i class="fas fa-{{ emptyStateIcon }} fa-4x text-muted"></i>
+                            </div>
+                            <h5 class="text-muted">No {{ modelLowerPlural }} found</h5>
+                            @if(request('search'))
+                                <p class="text-muted">
+                                    No {{ modelLowerPlural }} match your search criteria. 
+                                    <a href="{{ route('{{ modelLowerPlural }}.index') }}">Clear search</a> to see all {{ modelLowerPlural }}.
+                                </p>
+                            @else
+                                <p class="text-muted">Get started by creating your first {{ modelLower }}.</p>
+                                @can('create', App\Models\{{ model }}::class)
+                                    <a href="{{ route('{{ modelLowerPlural }}.create') }}" class="btn btn-primary">
+                                        <i class="fas fa-plus"></i> Create {{ model }}
+                                    </a>
+                                @endcan
+                            @endif
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            <!-- Bulk Actions (if applicable) -->
+            {{ bulkActions }}
+        </div>
+    </div>
+</div>
+@endsection
+
+@push('styles')
+<style>
+    .table th {
+        border-top: none;
+    }
+    
+    .btn-group .btn {
+        border-radius: 0.25rem;
+        margin-right: 2px;
+    }
+    
+    .btn-group .btn:last-child {
+        margin-right: 0;
+    }
+
+    {{ customStyles }}
+</style>
+@endpush
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-submit form when sort or per_page changes
+    const sortBy = document.getElementById('sort_by');
+    const sortDirection = document.getElementById('sort_direction');
+    const perPage = document.getElementById('per_page');
+    
+    [sortBy, sortDirection, perPage].forEach(element => {
+        if (element) {
+            element.addEventListener('change', function() {
+                this.form.submit();
+            });
+        }
+    });
+
+    // Enhance search with debounce
+    const searchInput = document.getElementById('search');
+    if (searchInput) {
+        let searchTimeout;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (this.value.length >= 3 || this.value.length === 0) {
+                    this.form.submit();
+                }
+            }, 500);
+        });
+    }
+
+    {{ customScripts }}
+});
+</script>
+@endpush

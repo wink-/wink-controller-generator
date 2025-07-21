@@ -1,0 +1,577 @@
+<?php
+
+namespace {{ namespace }};
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Store{{ model }}Request;
+use App\Http\Requests\Update{{ model }}Request;
+use App\Http\Resources\{{ model }}Resource;
+use App\Models\{{ model }};
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+use Throwable;
+
+/**
+ * @OA\Tag(
+ *     name="{{ model }}",
+ *     description="{{ model }} management endpoints (hybrid API/Web)"
+ * )
+ */
+class {{ class }} extends Controller
+{
+    public function __construct()
+    {
+        $this->middleware([{{ middleware }}]);
+        {{ authorizationMiddleware }}
+    }
+
+    /**
+     * Display a listing of {{ modelLowerPlural }}.
+     *
+     * Supports both JSON API responses and HTML views based on Accept header.
+     *
+     * @OA\Get(
+     *     path="/{{ modelLowerPlural }}",
+     *     summary="Get paginated list of {{ modelLowerPlural }}",
+     *     description="Retrieve a paginated list of {{ modelLowerPlural }} with optional search, filtering, and sorting. Supports both JSON and HTML responses.",
+     *     operationId="get{{ model }}List",
+     *     tags={"{{ model }}"},
+     *     security={{"bearerAuth": {}}},
+     *     @OA\Parameter(
+     *         name="Accept",
+     *         in="header",
+     *         description="Content type preference (application/json for API, text/html for web)",
+     *         required=false,
+     *         @OA\Schema(type="string", enum={"application/json", "text/html"})
+     *     ),
+     *     @OA\Parameter(
+     *         name="page",
+     *         in="query",
+     *         description="Page number",
+     *         required=false,
+     *         @OA\Schema(type="integer", minimum=1, default=1)
+     *     ),
+     *     @OA\Parameter(
+     *         name="per_page",
+     *         in="query",
+     *         description="Items per page",
+     *         required=false,
+     *         @OA\Schema(type="integer", minimum=1, maximum=100, default=15)
+     *     ),
+     *     @OA\Parameter(
+     *         name="search",
+     *         in="query",
+     *         description="Search term for filtering results",
+     *         required=false,
+     *         @OA\Schema(type="string", maxLength=255)
+     *     ),
+     *     {{ filterParameters }}
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *         @OA\JsonContent(
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="array",
+     *                 @OA\Items(ref="#/components/schemas/{{ model }}Resource")
+     *             ),
+     *             @OA\Property(property="meta", type="object"),
+     *             @OA\Property(property="links", type="object")
+     *         )
+     *     )
+     * )
+     */
+    public function index(Request $request)
+    {
+        try {
+            {{ indexAuthorization }}
+
+            $request->validate([
+                'per_page' => 'integer|min:1|max:100',
+                'page' => 'integer|min:1',
+                'search' => 'string|max:255',
+                'sort_by' => 'string|in:{{ sortableFieldsList }}',
+                'sort_direction' => 'string|in:asc,desc',
+                {{ indexValidationRules }}
+            ]);
+
+            $query = {{ model }}::query();
+
+            // Apply search functionality
+            if ($request->filled('search')) {
+                $searchTerm = $request->search;
+                $query->where(function ($q) use ($searchTerm) {
+                    {{ searchFields }}
+                });
+            }
+
+            // Apply filters
+            {{ indexFilters }}
+
+            // Apply sorting
+            $sortBy = $request->get('sort_by', '{{ defaultSortField }}');
+            $sortDirection = $request->get('sort_direction', 'asc');
+            $query->orderBy($sortBy, $sortDirection);
+
+            // Apply eager loading for performance
+            {{ eagerLoading }}
+
+            $perPage = min($request->get('per_page', 15), 100);
+            ${{ modelLowerPlural }} = $query->paginate($perPage)->withQueryString();
+
+            return $this->respondWithData($request, ${{ modelLowerPlural }}, [
+                'search' => $request->search,
+                'sortBy' => $sortBy,
+                'sortDirection' => $sortDirection,
+                {{ additionalIndexData }}
+            ], '{{ modelLowerPlural }}.index');
+
+        } catch (AuthorizationException $e) {
+            return $this->handleAuthorizationException($request, $e, 'view {{ modelLowerPlural }}');
+        } catch (ValidationException $e) {
+            return $this->handleValidationException($request, $e);
+        } catch (Throwable $e) {
+            return $this->handleGenericException($request, $e, 'fetching {{ modelLowerPlural }}');
+        }
+    }
+
+    /**
+     * Show the form for creating a new {{ modelLower }}.
+     *
+     * @param Request $request
+     * @return View|JsonResponse
+     */
+    public function create(Request $request)
+    {
+        try {
+            {{ createAuthorization }}
+
+            $data = [
+                {{ createViewData }}
+            ];
+
+            if ($this->wantsJson($request)) {
+                return response()->json([
+                    'data' => $data,
+                    'meta' => ['action' => 'create', 'model' => '{{ model }}']
+                ]);
+            }
+
+            return view('{{ modelLowerPlural }}.create', $data);
+
+        } catch (AuthorizationException $e) {
+            return $this->handleAuthorizationException($request, $e, 'create {{ modelLowerPlural }}', 
+                route('{{ modelLowerPlural }}.index'));
+        } catch (Throwable $e) {
+            return $this->handleGenericException($request, $e, 'loading create form',
+                route('{{ modelLowerPlural }}.index'));
+        }
+    }
+
+    /**
+     * Store a newly created {{ modelLower }}.
+     *
+     * @OA\Post(
+     *     path="/{{ modelLowerPlural }}",
+     *     summary="Create a new {{ modelLower }}",
+     *     description="Store a newly created {{ modelLower }} in storage",
+     *     operationId="store{{ model }}",
+     *     tags={"{{ model }}"},
+     *     security={{"bearerAuth": {}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         description="{{ model }} data",
+     *         @OA\JsonContent(ref="#/components/schemas/Store{{ model }}Request")
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="{{ model }} created successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/{{ model }}Resource"),
+     *             @OA\Property(property="message", type="string")
+     *         )
+     *     )
+     * )
+     */
+    public function store(Store{{ model }}Request $request)
+    {
+        try {
+            $data = $request->validated();
+            {{ storeDataProcessing }}
+
+            ${{ modelLower }} = {{ model }}::create($data);
+            {{ postStoreActions }}
+
+            Log::info('{{ model }} created successfully', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'interface' => $this->wantsJson($request) ? 'api' : 'web',
+            ]);
+
+            if ($this->wantsJson($request)) {
+                return response()->json([
+                    'data' => new {{ model }}Resource(${{ modelLower }}{{ storeRelationships }}),
+                    'message' => '{{ model }} created successfully'
+                ], 201);
+            }
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('success', '{{ model }} created successfully.');
+
+        } catch (AuthorizationException $e) {
+            return $this->handleAuthorizationException($request, $e, 'create {{ modelLowerPlural }}',
+                route('{{ modelLowerPlural }}.index'));
+        } catch (ValidationException $e) {
+            return $this->handleValidationException($request, $e, true);
+        } catch (Throwable $e) {
+            return $this->handleGenericException($request, $e, 'creating {{ modelLower }}',
+                back()->withInput());
+        }
+    }
+
+    /**
+     * Display the specified {{ modelLower }}.
+     *
+     * @OA\Get(
+     *     path="/{{ modelLowerPlural }}/{id}",
+     *     summary="Get a specific {{ modelLower }}",
+     *     operationId="show{{ model }}",
+     *     tags={"{{ model }}"},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="{{ primaryKeyType }}")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/{{ model }}Resource")
+     *         )
+     *     )
+     * )
+     */
+    public function show(Request $request, {{ model }} ${{ modelLower }})
+    {
+        try {
+            {{ showAuthorization }}
+
+            // Load relationships for complete resource representation
+            ${{ modelLower }}->load([{{ showRelationships }}]);
+
+            if ($this->wantsJson($request)) {
+                return response()->json([
+                    'data' => new {{ model }}Resource(${{ modelLower }})
+                ]);
+            }
+
+            return view('{{ modelLowerPlural }}.show', [
+                '{{ modelLower }}' => ${{ modelLower }},
+                {{ additionalShowData }}
+            ]);
+
+        } catch (AuthorizationException $e) {
+            return $this->handleAuthorizationException($request, $e, 'view this {{ modelLower }}',
+                route('{{ modelLowerPlural }}.index'));
+        } catch (ModelNotFoundException $e) {
+            return $this->handleNotFoundException($request, '{{ model }} not found',
+                route('{{ modelLowerPlural }}.index'));
+        } catch (Throwable $e) {
+            return $this->handleGenericException($request, $e, 'retrieving {{ modelLower }}',
+                route('{{ modelLowerPlural }}.index'));
+        }
+    }
+
+    /**
+     * Show the form for editing the specified {{ modelLower }}.
+     */
+    public function edit(Request $request, {{ model }} ${{ modelLower }})
+    {
+        try {
+            {{ editAuthorization }}
+
+            // Load relationships needed for the edit form
+            ${{ modelLower }}->load([{{ editRelationships }}]);
+
+            $data = [
+                '{{ modelLower }}' => ${{ modelLower }},
+                {{ editViewData }}
+            ];
+
+            if ($this->wantsJson($request)) {
+                return response()->json([
+                    'data' => array_merge($data, [
+                        'resource' => new {{ model }}Resource(${{ modelLower }})
+                    ]),
+                    'meta' => ['action' => 'edit', 'model' => '{{ model }}']
+                ]);
+            }
+
+            return view('{{ modelLowerPlural }}.edit', $data);
+
+        } catch (AuthorizationException $e) {
+            return $this->handleAuthorizationException($request, $e, 'edit this {{ modelLower }}',
+                route('{{ modelLowerPlural }}.show', ${{ modelLower }}));
+        } catch (ModelNotFoundException $e) {
+            return $this->handleNotFoundException($request, '{{ model }} not found',
+                route('{{ modelLowerPlural }}.index'));
+        } catch (Throwable $e) {
+            return $this->handleGenericException($request, $e, 'loading edit form',
+                route('{{ modelLowerPlural }}.show', ${{ modelLower }}));
+        }
+    }
+
+    /**
+     * Update the specified {{ modelLower }}.
+     *
+     * @OA\Put(
+     *     path="/{{ modelLowerPlural }}/{id}",
+     *     summary="Update a {{ modelLower }}",
+     *     operationId="update{{ model }}",
+     *     tags={"{{ model }}"},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="{{ primaryKeyType }}")
+     *     ),
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(ref="#/components/schemas/Update{{ model }}Request")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="{{ model }} updated successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/{{ model }}Resource"),
+     *             @OA\Property(property="message", type="string")
+     *         )
+     *     )
+     * )
+     */
+    public function update(Update{{ model }}Request $request, {{ model }} ${{ modelLower }})
+    {
+        try {
+            $data = $request->validated();
+            {{ updateDataProcessing }}
+
+            $originalData = ${{ modelLower }}->toArray();
+            ${{ modelLower }}->update($data);
+            {{ postUpdateActions }}
+
+            Log::info('{{ model }} updated successfully', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'interface' => $this->wantsJson($request) ? 'api' : 'web',
+                'changes' => ${{ modelLower }}->getChanges(),
+            ]);
+
+            if ($this->wantsJson($request)) {
+                return response()->json([
+                    'data' => new {{ model }}Resource(${{ modelLower }}->fresh([{{ updateRelationships }}])),
+                    'message' => '{{ model }} updated successfully'
+                ]);
+            }
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.show', ${{ modelLower }})
+                ->with('success', '{{ model }} updated successfully.');
+
+        } catch (AuthorizationException $e) {
+            return $this->handleAuthorizationException($request, $e, 'update this {{ modelLower }}',
+                route('{{ modelLowerPlural }}.show', ${{ modelLower }}));
+        } catch (ModelNotFoundException $e) {
+            return $this->handleNotFoundException($request, '{{ model }} not found',
+                route('{{ modelLowerPlural }}.index'));
+        } catch (ValidationException $e) {
+            return $this->handleValidationException($request, $e, true);
+        } catch (Throwable $e) {
+            return $this->handleGenericException($request, $e, 'updating {{ modelLower }}',
+                back()->withInput());
+        }
+    }
+
+    /**
+     * Remove the specified {{ modelLower }}.
+     *
+     * @OA\Delete(
+     *     path="/{{ modelLowerPlural }}/{id}",
+     *     summary="Delete a {{ modelLower }}",
+     *     operationId="delete{{ model }}",
+     *     tags={"{{ model }}"},
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         required=true,
+     *         @OA\Schema(type="{{ primaryKeyType }}")
+     *     ),
+     *     @OA\Response(
+     *         response=204,
+     *         description="{{ model }} deleted successfully"
+     *     )
+     * )
+     */
+    public function destroy(Request $request, {{ model }} ${{ modelLower }})
+    {
+        try {
+            {{ destroyAuthorization }}
+
+            // Check for existing relationships that would prevent deletion
+            {{ relationshipChecks }}
+
+            {{ preDeleteActions }}
+            
+            {{ softDeleteCheck }}${{ modelLower }}->delete();
+            {{ postDeleteActions }}
+
+            Log::info('{{ model }} deleted successfully', [
+                '{{ modelLower }}_id' => ${{ modelLower }}->{{ primaryKey }},
+                'user_id' => auth()->id(),
+                'interface' => $this->wantsJson($request) ? 'api' : 'web',
+            ]);
+
+            if ($this->wantsJson($request)) {
+                return response()->json([
+                    'message' => '{{ model }} deleted successfully'
+                ], 204);
+            }
+
+            return redirect()
+                ->route('{{ modelLowerPlural }}.index')
+                ->with('success', '{{ model }} deleted successfully.');
+
+        } catch (AuthorizationException $e) {
+            return $this->handleAuthorizationException($request, $e, 'delete this {{ modelLower }}',
+                route('{{ modelLowerPlural }}.show', ${{ modelLower }}));
+        } catch (ModelNotFoundException $e) {
+            return $this->handleNotFoundException($request, '{{ model }} not found',
+                route('{{ modelLowerPlural }}.index'));
+        } catch (Throwable $e) {
+            return $this->handleGenericException($request, $e, 'deleting {{ modelLower }}',
+                route('{{ modelLowerPlural }}.show', ${{ modelLower }}));
+        }
+    }
+
+    /**
+     * Determine if the request wants JSON response.
+     */
+    protected function wantsJson(Request $request): bool
+    {
+        return $request->wantsJson() || 
+               $request->expectsJson() || 
+               $request->header('Accept') === 'application/json' ||
+               $request->is('api/*');
+    }
+
+    /**
+     * Respond with data, choosing format based on request.
+     */
+    protected function respondWithData(Request $request, $data, array $additionalData = [], string $view = null)
+    {
+        if ($this->wantsJson($request)) {
+            if (method_exists($data, 'items')) {
+                // Paginated data
+                return {{ model }}Resource::collection($data);
+            }
+            
+            return response()->json([
+                'data' => $data instanceof {{ model }} 
+                    ? new {{ model }}Resource($data) 
+                    : $data,
+                'meta' => $additionalData
+            ]);
+        }
+
+        if ($view) {
+            return view($view, array_merge(['{{ modelLowerPlural }}' => $data], $additionalData));
+        }
+
+        return response($data);
+    }
+
+    /**
+     * Handle authorization exceptions.
+     */
+    protected function handleAuthorizationException(Request $request, AuthorizationException $e, string $action, $fallback = null)
+    {
+        Log::warning("Unauthorized attempt to {$action}", [
+            'user_id' => auth()->id(),
+            'ip' => $request->ip(),
+            'route' => $request->route()?->getName(),
+        ]);
+
+        if ($this->wantsJson($request)) {
+            return response()->json([
+                'message' => 'This action is unauthorized.'
+            ], 403);
+        }
+
+        $redirect = $fallback ?: back();
+        return $redirect->with('error', "You are not authorized to {$action}.");
+    }
+
+    /**
+     * Handle validation exceptions.
+     */
+    protected function handleValidationException(Request $request, ValidationException $e, bool $withInput = false)
+    {
+        if ($this->wantsJson($request)) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => $e->errors()
+            ], 422);
+        }
+
+        $redirect = back()->withErrors($e->errors());
+        if ($withInput) {
+            $redirect->withInput();
+        }
+        
+        return $redirect->with('error', 'Please correct the errors below.');
+    }
+
+    /**
+     * Handle not found exceptions.
+     */
+    protected function handleNotFoundException(Request $request, string $message, $fallback)
+    {
+        if ($this->wantsJson($request)) {
+            return response()->json(['message' => $message], 404);
+        }
+
+        return redirect($fallback)->with('error', $message);
+    }
+
+    /**
+     * Handle generic exceptions.
+     */
+    protected function handleGenericException(Request $request, Throwable $e, string $action, $fallback = null)
+    {
+        Log::error("Error {$action}", [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'user_id' => auth()->id(),
+            'route' => $request->route()?->getName(),
+        ]);
+
+        if ($this->wantsJson($request)) {
+            return response()->json([
+                'message' => "An error occurred while {$action}."
+            ], 500);
+        }
+
+        $redirect = $fallback ?: back();
+        return $redirect->with('error', "An error occurred while {$action}. Please try again.");
+    }
+
+    {{ additionalMethods }}
+}
