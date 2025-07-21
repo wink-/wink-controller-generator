@@ -110,9 +110,10 @@ class TestCase extends Orchestra
      */
     protected function setUpFactories(): void
     {
-        // Register factory namespaces
-        $this->app->make('Illuminate\Database\Eloquent\Factory')
-            ->load(__DIR__ . '/Fixtures/Factories');
+        // Laravel 12 uses automatic factory discovery
+        // Factories should be placed in the correct namespace and follow naming conventions
+        // This method is kept for any manual factory registration if needed
+        $this->registerTestFactories();
     }
 
     /**

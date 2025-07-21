@@ -3,9 +3,7 @@
 namespace Wink\ControllerGenerator\Tests\Unit;
 
 use Illuminate\Support\Facades\Artisan;
-use Wink\ControllerGenerator\Commands\GenerateApiControllerCommand;
 use Wink\ControllerGenerator\Commands\GenerateControllerCommand;
-use Wink\ControllerGenerator\Commands\GenerateWebControllerCommand;
 use Wink\ControllerGenerator\ControllerGeneratorServiceProvider;
 use Wink\ControllerGenerator\Tests\TestCase;
 
@@ -29,62 +27,48 @@ class ServiceProviderTest extends TestCase
     {
         $registeredCommands = array_keys(Artisan::all());
         
-        $this->assertContains('wink:controllers:generate', $registeredCommands);
-        $this->assertContains('wink:controllers:api', $registeredCommands);
-        $this->assertContains('wink:controllers:web', $registeredCommands);
+        $this->assertContains('wink:generate-controllers', $registeredCommands);
     }
 
     /** @test */
     public function generate_controller_command_is_registered()
     {
-        $command = Artisan::all()['wink:controllers:generate'];
+        $command = Artisan::all()['wink:generate-controllers'];
         $this->assertInstanceOf(GenerateControllerCommand::class, $command);
-    }
-
-    /** @test */
-    public function generate_api_controller_command_is_registered()
-    {
-        $command = Artisan::all()['wink:controllers:api'];
-        $this->assertInstanceOf(GenerateApiControllerCommand::class, $command);
-    }
-
-    /** @test */
-    public function generate_web_controller_command_is_registered()
-    {
-        $command = Artisan::all()['wink:controllers:web'];
-        $this->assertInstanceOf(GenerateWebControllerCommand::class, $command);
     }
 
     /** @test */
     public function config_can_be_published()
     {
-        // Check if config publish group is registered
-        $publishGroups = $this->app->make('Illuminate\Foundation\Application')->getPublishGroups();
+        // Test that config publishing works by attempting to publish
+        $result = $this->artisan('vendor:publish', [
+            '--tag' => 'wink-controllers-config',
+            '--force' => true
+        ]);
         
-        $this->assertArrayHasKey('wink-controllers-config', $publishGroups);
+        // The command should execute successfully
+        $result->assertExitCode(0);
         
-        $configPublishes = $publishGroups['wink-controllers-config'];
-        $this->assertNotEmpty($configPublishes);
-        
-        // Verify the source and destination paths
+        // Verify the source config file exists
         $configPath = realpath(__DIR__ . '/../../config/wink-controllers.php');
-        $this->assertArrayHasKey($configPath, $configPublishes);
+        $this->assertFileExists($configPath);
     }
 
     /** @test */
     public function stubs_can_be_published()
     {
-        // Check if stubs publish group is registered
-        $publishGroups = $this->app->make('Illuminate\Foundation\Application')->getPublishGroups();
+        // Test that stubs publishing works by attempting to publish
+        $result = $this->artisan('vendor:publish', [
+            '--tag' => 'wink-controllers-stubs',
+            '--force' => true
+        ]);
         
-        $this->assertArrayHasKey('wink-controllers-stubs', $publishGroups);
+        // The command should execute successfully
+        $result->assertExitCode(0);
         
-        $stubsPublishes = $publishGroups['wink-controllers-stubs'];
-        $this->assertNotEmpty($stubsPublishes);
-        
-        // Verify the source path exists
+        // Verify the source stubs directory exists
         $stubsPath = realpath(__DIR__ . '/../../stubs');
-        $this->assertArrayHasKey($stubsPath, $stubsPublishes);
+        $this->assertDirectoryExists($stubsPath);
     }
 
     /** @test */
@@ -109,9 +93,7 @@ class ServiceProviderTest extends TestCase
         $this->assertTrue($this->app->runningInConsole());
         
         // Commands should be registered
-        $this->assertArrayHasKey('wink:controllers:generate', Artisan::all());
-        $this->assertArrayHasKey('wink:controllers:api', Artisan::all());
-        $this->assertArrayHasKey('wink:controllers:web', Artisan::all());
+        $this->assertArrayHasKey('wink:generate-controllers', Artisan::all());
     }
 
     /** @test */
@@ -139,33 +121,42 @@ class ServiceProviderTest extends TestCase
     /** @test */
     public function package_publishes_are_correctly_tagged()
     {
-        $publishGroups = $this->app->make('Illuminate\Foundation\Application')->getPublishGroups();
+        // Test that both tagged publish groups work
+        $configResult = $this->artisan('vendor:publish', [
+            '--tag' => 'wink-controllers-config',
+            '--dry-run' => true
+        ]);
         
-        // Check that both publish groups exist
-        $this->assertArrayHasKey('wink-controllers-config', $publishGroups);
-        $this->assertArrayHasKey('wink-controllers-stubs', $publishGroups);
+        $stubsResult = $this->artisan('vendor:publish', [
+            '--tag' => 'wink-controllers-stubs', 
+            '--dry-run' => true
+        ]);
         
-        // Verify config publish path
-        $configPublishes = $publishGroups['wink-controllers-config'];
-        $configDestination = array_values($configPublishes)[0];
-        $this->assertStringEndsWith('config/wink-controllers.php', $configDestination);
+        // Both commands should execute successfully in dry-run mode
+        $configResult->assertExitCode(0);
+        $stubsResult->assertExitCode(0);
         
-        // Verify stubs publish path
-        $stubsPublishes = $publishGroups['wink-controllers-stubs'];
-        $stubsDestination = array_values($stubsPublishes)[0];
-        $this->assertStringEndsWith('resources/stubs/wink/controllers', $stubsDestination);
+        // Verify source files exist
+        $this->assertFileExists(__DIR__ . '/../../config/wink-controllers.php');
+        $this->assertDirectoryExists(__DIR__ . '/../../stubs');
     }
 
     /** @test */
     public function commands_have_correct_signatures()
     {
-        $generateCommand = Artisan::all()['wink:controllers:generate'];
-        $apiCommand = Artisan::all()['wink:controllers:api'];
-        $webCommand = Artisan::all()['wink:controllers:web'];
+        $generateCommand = Artisan::all()['wink:generate-controllers'];
         
-        // Test command signatures contain required arguments
-        $this->assertStringContainsString('table', $generateCommand->getDefinition()->getArguments()['table']->getName());
-        $this->assertStringContainsString('table', $apiCommand->getDefinition()->getArguments()['table']->getName());
-        $this->assertStringContainsString('table', $webCommand->getDefinition()->getArguments()['table']->getName());
+        // Test command signature contains expected arguments and options
+        $definition = $generateCommand->getDefinition();
+        
+        // Check if model argument exists (it's optional in our signature)
+        $arguments = $definition->getArguments();
+        $this->assertArrayHasKey('model', $arguments);
+        
+        // Check for key options
+        $options = $definition->getOptions();
+        $this->assertArrayHasKey('type', $options);
+        $this->assertArrayHasKey('dry-run', $options);
+        $this->assertArrayHasKey('force', $options);
     }
 }

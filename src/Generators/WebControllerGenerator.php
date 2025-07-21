@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Wink\ControllerGenerator\Generators;
 
 use Illuminate\Support\Str;
+use Wink\ControllerGenerator\Analyzers\ModelAnalyzer;
 
 /**
  * Generator for web controllers.
@@ -18,6 +19,17 @@ use Illuminate\Support\Str;
  */
 class WebControllerGenerator extends AbstractControllerGenerator
 {
+    protected ModelAnalyzer $modelAnalyzer;
+    
+    public function __construct(
+        \Illuminate\Filesystem\Filesystem $filesystem,
+        ModelAnalyzer $modelAnalyzer,
+        array $config = []
+    ) {
+        parent::__construct($filesystem, $config);
+        $this->modelAnalyzer = $modelAnalyzer;
+    }
+    
     /**
      * Generate the web controller file.
      */

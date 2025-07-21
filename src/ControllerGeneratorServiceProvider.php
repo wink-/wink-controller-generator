@@ -3,9 +3,7 @@
 namespace Wink\ControllerGenerator;
 
 use Illuminate\Support\ServiceProvider;
-use Wink\ControllerGenerator\Commands\GenerateApiControllerCommand;
 use Wink\ControllerGenerator\Commands\GenerateControllerCommand;
-use Wink\ControllerGenerator\Commands\GenerateWebControllerCommand;
 
 class ControllerGeneratorServiceProvider extends ServiceProvider
 {
@@ -36,8 +34,6 @@ class ControllerGeneratorServiceProvider extends ServiceProvider
 
             $this->commands([
                 GenerateControllerCommand::class,
-                GenerateApiControllerCommand::class,
-                GenerateWebControllerCommand::class,
             ]);
         }
     }
