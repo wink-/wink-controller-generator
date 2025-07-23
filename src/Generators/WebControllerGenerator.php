@@ -83,22 +83,69 @@ class WebControllerGenerator extends AbstractControllerGenerator
      */
     protected function getControllerSpecificVars(): array
     {
+        $modelName = $this->getModelName();
+        $modelLower = strtolower($modelName);
+        $modelLowerPlural = strtolower($this->getPluralName());
+        
         return [
-            'storeRequestClass' => $this->getStoreRequestClassName(),
-            'updateRequestClass' => $this->getUpdateRequestClassName(),
-            'indexMethod' => $this->generateIndexMethod(),
-            'createMethod' => $this->generateCreateMethod(),
-            'storeMethod' => $this->generateStoreMethod(),
-            'showMethod' => $this->generateShowMethod(),
-            'editMethod' => $this->generateEditMethod(),
-            'updateMethod' => $this->generateUpdateMethod(),
-            'destroyMethod' => $this->generateDestroyMethod(),
-            'constructorMethod' => $this->generateConstructorMethod(),
-            'imports' => $this->formatImports($this->getWebImports()),
-            'viewPath' => $this->getViewPath(),
-            'usesFormRequests' => $this->getConfigValue('use_form_requests', true),
-            'includesAuthorization' => $this->getConfigValue('include_authorization', true),
-            'includesFlashMessages' => $this->getConfigValue('include_flash_messages', true),
+            // Model variations
+            'modelLower' => $modelLower,
+            'modelLowerPlural' => $modelLowerPlural,
+            'modelNamespace' => $this->getFullModelClass(),
+            'primaryKey' => $this->getPrimaryKey(),
+            
+            // Authorization placeholders
+            'authorizationMiddleware' => $this->getConfigValue('include_authorization', true) 
+                ? '$this->authorizeResource(' . $modelName . '::class, \'' . $modelLower . '\');' 
+                : '',
+            'indexAuthorization' => $this->getConfigValue('include_authorization', true)
+                ? '$this->authorize(\'viewAny\', ' . $modelName . '::class);'
+                : '',
+            'createAuthorization' => $this->getConfigValue('include_authorization', true)
+                ? '$this->authorize(\'create\', ' . $modelName . '::class);'
+                : '',
+            'showAuthorization' => $this->getConfigValue('include_authorization', true)
+                ? '$this->authorize(\'view\', $' . $modelLower . ');'
+                : '',
+            'editAuthorization' => $this->getConfigValue('include_authorization', true)
+                ? '$this->authorize(\'update\', $' . $modelLower . ');'
+                : '',
+            'destroyAuthorization' => $this->getConfigValue('include_authorization', true)
+                ? '$this->authorize(\'delete\', $' . $modelLower . ');'
+                : '',
+                
+            // Index method variables
+            'sortableFieldsList' => $this->getPrimaryKey() . ',created_at,updated_at',
+            'indexValidationRules' => '',
+            'searchFields' => '$query->where(\'id\', \'like\', "%{$searchTerm}%");',
+            'indexFilters' => '// Add custom filters here',
+            'defaultSortField' => $this->getPrimaryKey(),
+            'eagerLoading' => '// $query->with([]);',
+            'additionalIndexData' => '',
+            
+            // Create/Edit view data
+            'createViewData' => '// Add data for create form',
+            'editViewData' => '// Add data for edit form',
+            'editRelationships' => '',
+            
+            // Store/Update processing
+            'storeDataProcessing' => '$data = $request->validated();',
+            'updateDataProcessing' => '$data = $request->validated();',
+            'postStoreActions' => '// Additional actions after storing',
+            'postUpdateActions' => '// Additional actions after updating',
+            
+            // Show method
+            'showRelationships' => '',
+            'additionalShowData' => '',
+            
+            // Delete method
+            'relationshipChecks' => '// Check for dependent relationships',
+            'preDeleteActions' => '// Actions before deletion',
+            'postDeleteActions' => '// Actions after deletion',
+            'softDeleteCheck' => '',
+            
+            // Additional methods
+            'additionalMethods' => '// Add any additional controller methods here',
         ];
     }
 
@@ -426,6 +473,25 @@ class WebControllerGenerator extends AbstractControllerGenerator
             "{$viewPath}/show.blade.php",
             "{$viewPath}/edit.blade.php",
         ];
+    }
+
+    /**
+     * Get the primary key for the model.
+     */
+    protected function getPrimaryKey(): string
+    {
+        $modelClass = $this->getFullModelClass();
+        
+        if (!class_exists($modelClass)) {
+            return 'id'; // Default fallback
+        }
+        
+        try {
+            $instance = new $modelClass();
+            return $instance->getKeyName();
+        } catch (\Exception $e) {
+            return 'id'; // Default fallback
+        }
     }
 
     /**

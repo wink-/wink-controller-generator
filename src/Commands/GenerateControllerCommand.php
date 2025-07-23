@@ -70,7 +70,7 @@ class GenerateControllerCommand extends Command
         }
 
         // Validate model exists
-        $modelClass = "App\\Models\\" . Str::studly(Str::singular($model));
+        $modelClass = $this->resolveModelClass($model);
         if (!$this->modelAnalyzer->modelExists($modelClass)) {
             if (!$this->confirm("Model {$modelClass} does not exist. Continue anyway?")) {
                 return self::FAILURE;
@@ -215,12 +215,36 @@ class GenerateControllerCommand extends Command
     }
 
     /**
+     * Resolve the fully qualified model class name.
+     */
+    protected function resolveModelClass(string $model): string
+    {
+        // Remove .php extension if present
+        $model = str_replace('.php', '', $model);
+        
+        // If already contains namespace separator, assume it's a relative namespace under App\Models
+        if (str_contains($model, '\\') || str_contains($model, '/')) {
+            // Convert forward slashes to backslashes
+            $model = str_replace('/', '\\', $model);
+            // If it doesn't start with App\Models, prepend it
+            if (!str_starts_with($model, 'App\\Models\\')) {
+                return 'App\\Models\\' . $model;
+            }
+            return $model;
+        }
+        
+        // Simple model name - use default behavior
+        return "App\\Models\\" . Str::studly(Str::singular($model));
+    }
+
+    /**
      * Preview what would be generated.
      */
     protected function previewGeneration(string $model, string $type, array $options): void
     {
-        $modelName = Str::studly(Str::singular($model));
-        $controllerName = $modelName . 'Controller';
+        $modelClass = $this->resolveModelClass($model);
+        $modelBaseName = class_basename($modelClass);
+        $controllerName = $modelBaseName . 'Controller';
         
         $namespace = match ($type) {
             'api' => $options['namespace'] ?? 'App\\Http\\Controllers\\Api',
@@ -228,18 +252,18 @@ class GenerateControllerCommand extends Command
             'resource' => $options['namespace'] ?? 'App\\Http\\Controllers',
         };
 
-        $this->info("Preview for {$modelName} ({$type} controller):");
+        $this->info("Preview for {$modelBaseName} ({$type} controller):");
         $this->line("📁 Namespace: {$namespace}");
         $this->line("📄 Controller: {$controllerName}.php");
 
         if ($options['use_form_requests'] ?? true) {
             $this->line("📋 Form Requests:");
-            $this->line("   - Store{$modelName}Request.php");
-            $this->line("   - Update{$modelName}Request.php");
+            $this->line("   - Store{$modelBaseName}Request.php");
+            $this->line("   - Update{$modelBaseName}Request.php");
         }
 
         if (($options['use_resources'] ?? true) && $type === 'api') {
-            $this->line("🔄 API Resource: {$modelName}Resource.php");
+            $this->line("🔄 API Resource: {$modelBaseName}Resource.php");
         }
 
         if ($options['generate_tests'] ?? false) {
@@ -247,7 +271,6 @@ class GenerateControllerCommand extends Command
         }
 
         // Show model analysis if model exists
-        $modelClass = "App\\Models\\{$modelName}";
         if ($this->modelAnalyzer->modelExists($modelClass)) {
             try {
                 $analysis = $this->modelAnalyzer->analyze($modelClass);

@@ -29,12 +29,12 @@ class ApiControllerGenerator extends AbstractControllerGenerator
         $this->validateModel($model);
         $this->setModel($model);
         
-        // Merge options with config
-        $this->config = array_merge($this->config, $options);
+        // Merge options with config (recursive to preserve nested arrays)
+        $this->config = array_merge_recursive($this->config, $options);
         
         // Analyze the model if it exists
         if ($this->modelExists($model)) {
-            $modelClass = "App\\Models\\{$this->getModelName()}";
+            $modelClass = $this->getFullModelClass();
             $this->modelInfo = $this->modelAnalyzer->analyze($modelClass);
         }
         
@@ -99,15 +99,24 @@ class ApiControllerGenerator extends AbstractControllerGenerator
     {
         return [
             'baseController' => $this->getBaseController(),
+            'modelNamespace' => $this->getFullModelClass(),
+            'modelLower' => strtolower($this->getModelName()),
+            'modelLowerPlural' => strtolower($this->getPluralName()),
+            'primaryKey' => $this->getPrimaryKey(),
             'resourceClass' => $this->getResourceClass(),
             'resourceCollection' => $this->getResourceCollectionClass(),
             'storeRequest' => $this->getStoreRequestClass(),
             'updateRequest' => $this->getUpdateRequestClass(),
             'usesResources' => $this->config['use_resources'] ? 'true' : 'false',
             'usesFormRequests' => $this->config['use_form_requests'] ? 'true' : 'false',
-            'paginationEnabled' => $this->config['pagination']['enabled'] ? 'true' : 'false',
-            'perPage' => $this->config['pagination']['per_page'],
-            'maxPerPage' => $this->config['pagination']['max_per_page'],
+            'pagination' => $this->config['pagination'] ?? [
+                'enabled' => true,
+                'per_page' => 15,
+                'max_per_page' => 100
+            ],
+            'paginationEnabled' => ($this->config['pagination']['enabled'] ?? true) ? 'true' : 'false',
+            'perPage' => $this->config['pagination']['per_page'] ?? 15,
+            'maxPerPage' => $this->config['pagination']['max_per_page'] ?? 100,
             'methods' => $this->generateMethods(),
             'usesSoftDeletes' => $this->shouldUseSoftDeletes() ? 'true' : 'false',
             'searchableFields' => $this->getSearchableFields(),
@@ -115,6 +124,48 @@ class ApiControllerGenerator extends AbstractControllerGenerator
             'sortableFields' => $this->getSortableFields(),
             'relationships' => $this->getEagerLoadRelationships(),
             'validationRules' => $this->getValidationRules(),
+            
+            // Authorization template variables
+            'authorizationMiddleware' => $this->getConfigValue('features.authorization', true) 
+                ? '$this->authorizeResource(' . $this->getModelName() . '::class, \'' . strtolower($this->getModelName()) . '\');' 
+                : '',
+            'indexAuthorization' => $this->getConfigValue('features.authorization', true)
+                ? '$this->authorize(\'viewAny\', ' . $this->getModelName() . '::class);'
+                : '',
+            'showAuthorization' => $this->getConfigValue('features.authorization', true)
+                ? '$this->authorize(\'view\', $' . strtolower($this->getModelName()) . ');'
+                : '',
+            'destroyAuthorization' => $this->getConfigValue('features.authorization', true)
+                ? '$this->authorize(\'delete\', $' . strtolower($this->getModelName()) . ');'
+                : '',
+                
+            // Search and filtering
+            'sortableFieldsList' => implode(',', $this->getSortableFields()),
+            'defaultSortField' => $this->getPrimaryKey(),
+            'searchFields' => '$query->search($searchTerm);',
+            'indexFilters' => '// Add API-specific filters here',
+            'indexValidationRules' => '',
+            'eagerLoading' => '// $query->with([]);',
+            'filterParameters' => '',
+            
+            // Data processing placeholders
+            'storeDataProcessing' => '$data = $request->validated();',
+            'updateDataProcessing' => '$data = $request->validated();',
+            'postStoreActions' => '// Additional actions after storing',
+            'postUpdateActions' => '// Additional actions after updating',
+            'preDeleteActions' => '// Actions before deletion',
+            'postDeleteActions' => '// Actions after deletion',
+            'relationshipChecks' => '// Check for dependent relationships',
+            'softDeleteCheck' => '',
+            'additionalMethods' => '// Add any additional API methods here',
+            
+            // Relationships
+            'showRelationships' => '',
+            'storeRelationships' => '',
+            'updateRelationships' => '',
+            
+            // Primary key type for OpenAPI
+            'primaryKeyType' => 'integer',
         ];
     }
     
@@ -165,7 +216,7 @@ class ApiControllerGenerator extends AbstractControllerGenerator
     {
         $methods = ['index', 'store', 'show', 'update', 'destroy'];
         
-        if ($this->config['features']['bulk_operations']) {
+        if ($this->config['features']['bulk_operations'] ?? false) {
             $methods[] = 'bulkUpdate';
             $methods[] = 'bulkDestroy';
         }
@@ -183,11 +234,13 @@ class ApiControllerGenerator extends AbstractControllerGenerator
      */
     protected function shouldUseSoftDeletes(): bool
     {
-        if ($this->config['features']['soft_deletes'] === 'auto') {
+        $softDeletes = $this->config['features']['soft_deletes'] ?? 'auto';
+        
+        if ($softDeletes === 'auto') {
             return $this->modelInfo['usesSoftDeletes'] ?? false;
         }
         
-        return (bool) $this->config['features']['soft_deletes'];
+        return (bool) $softDeletes;
     }
     
     /**
@@ -234,11 +287,30 @@ class ApiControllerGenerator extends AbstractControllerGenerator
     }
     
     /**
+     * Get the primary key for the model.
+     */
+    protected function getPrimaryKey(): string
+    {
+        $modelClass = $this->getFullModelClass();
+        
+        if (!class_exists($modelClass)) {
+            return 'id'; // Default fallback
+        }
+        
+        try {
+            $instance = new $modelClass();
+            return $instance->getKeyName();
+        } catch (\Exception $e) {
+            return 'id'; // Default fallback
+        }
+    }
+
+    /**
      * Get sortable fields from model info.
      */
     protected function getSortableFields(): array
     {
-        $fields = ['id', 'created_at', 'updated_at'];
+        $fields = [$this->getPrimaryKey(), 'created_at', 'updated_at'];
         
         // Add numeric and date fields
         $sortableTypes = ['integer', 'bigint', 'decimal', 'float', 'date', 'datetime', 'timestamp'];
@@ -363,7 +435,7 @@ class ApiControllerGenerator extends AbstractControllerGenerator
         $imports[] = 'Illuminate\\Http\\JsonResponse';
         $imports[] = 'Illuminate\\Database\\Eloquent\\Builder';
         
-        if ($this->config['features']['pagination']) {
+        if ($this->config['features']['pagination'] ?? true) {
             $imports[] = 'Illuminate\\Pagination\\LengthAwarePaginator';
         }
         
@@ -442,7 +514,8 @@ PHP;
      */
     protected function getResourceFields(): array
     {
-        $fields = ['id' => '$this->id'];
+        $primaryKey = $this->getPrimaryKey();
+        $fields = [$primaryKey => "\$this->{$primaryKey}"];
         
         // Add fillable fields
         foreach ($this->modelInfo['fillable'] ?? [] as $field) {

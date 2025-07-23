@@ -5,7 +5,7 @@ namespace {{ namespace }};
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Store{{ model }}Request;
 use App\Http\Requests\Update{{ model }}Request;
-use App\Models\{{ model }};
+use {{ modelNamespace }};
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
@@ -47,10 +47,7 @@ class {{ class }} extends Controller
 
             // Apply search functionality
             if ($request->filled('search')) {
-                $searchTerm = $request->search;
-                $query->where(function ($q) use ($searchTerm) {
-                    {{ searchFields }}
-                });
+                $query->search($request->search);
             }
 
             // Apply filters
@@ -150,7 +147,6 @@ class {{ class }} extends Controller
     public function store(Store{{ model }}Request $request): RedirectResponse
     {
         try {
-            $data = $request->validated();
             {{ storeDataProcessing }}
 
             ${{ modelLower }} = {{ model }}::create($data);
@@ -305,7 +301,6 @@ class {{ class }} extends Controller
     public function update(Update{{ model }}Request $request, {{ model }} ${{ modelLower }}): RedirectResponse
     {
         try {
-            $data = $request->validated();
             {{ updateDataProcessing }}
 
             $originalData = ${{ modelLower }}->toArray();

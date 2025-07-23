@@ -68,9 +68,12 @@ abstract class AbstractControllerGenerator
     {
         $this->templateVars = [
             'namespace' => $this->getNamespace(),
+            'class' => $this->getClassName(),
             'className' => $this->getClassName(),
+            'model' => $this->getModelName(),
             'modelName' => $this->getModelName(),
             'modelVariable' => $this->getModelVariable(),
+            'modelLowerPlural' => strtolower($this->getPluralName()),
             'tableName' => $this->table,
             'routeKey' => $this->getRouteKey(),
             'pluralName' => $this->getPluralName(),
@@ -80,7 +83,7 @@ abstract class AbstractControllerGenerator
             'snakeCase' => $this->getSnakeCase(),
             'kebabCase' => $this->getKebabCase(),
             'imports' => $this->getImports(),
-            'middleware' => $this->getMiddleware(),
+            'middleware' => $this->formatMiddleware(),
             'traits' => $this->getTraits(),
         ];
     }
@@ -111,9 +114,13 @@ abstract class AbstractControllerGenerator
         foreach ($vars as $key => $value) {
             if (is_array($value)) {
                 $value = $this->formatArrayValue($value);
+            } elseif (is_bool($value)) {
+                $value = $value ? 'true' : 'false';
+            } elseif (is_null($value)) {
+                $value = '';
             }
             
-            $content = str_replace("{{ {$key} }}", $value, $content);
+            $content = str_replace("{{ {$key} }}", (string) $value, $content);
         }
 
         return $content;
@@ -197,7 +204,7 @@ abstract class AbstractControllerGenerator
             return "{$customPath}/{$templateName}";
         }
 
-        return __DIR__ . "/../../Templates/{$templateName}";
+        return __DIR__ . "/../../stubs/{$templateName}";
     }
 
     /**
@@ -221,7 +228,32 @@ abstract class AbstractControllerGenerator
      */
     protected function getModelName(): string
     {
-        return Str::studly(Str::singular($this->model));
+        // Extract just the class name from namespaced models
+        $model = str_replace(['/', '\\'], '\\', $this->model);
+        $parts = explode('\\', $model);
+        $className = array_pop($parts);
+        
+        return Str::studly(Str::singular($className));
+    }
+
+    /**
+     * Get the fully qualified model class name.
+     */
+    protected function getFullModelClass(): string
+    {
+        // Handle namespaced models
+        $model = str_replace(['/', '\\'], '\\', $this->model);
+        
+        // If already contains namespace, just prepend App\Models if needed
+        if (str_contains($model, '\\')) {
+            if (!str_starts_with($model, 'App\\Models\\')) {
+                return 'App\\Models\\' . $model;
+            }
+            return $model;
+        }
+        
+        // Simple model name
+        return "App\\Models\\{$this->getModelName()}";
     }
 
     /**
@@ -229,7 +261,8 @@ abstract class AbstractControllerGenerator
      */
     protected function getModelVariable(): string
     {
-        return Str::camel(Str::singular($this->model));
+        // Get just the class name from namespaced models
+        return Str::camel(Str::singular($this->getModelName()));
     }
 
     /**
@@ -304,7 +337,7 @@ abstract class AbstractControllerGenerator
         return [
             'Illuminate\\Http\\Request',
             'App\\Http\\Controllers\\Controller',
-            "App\\Models\\{$this->getModelName()}",
+            $this->getFullModelClass(),
         ];
     }
 
@@ -314,6 +347,15 @@ abstract class AbstractControllerGenerator
     protected function getMiddleware(): array
     {
         return $this->config['middleware'] ?? [];
+    }
+
+    /**
+     * Format middleware for template replacement.
+     */
+    protected function formatMiddleware(): string
+    {
+        $middleware = $this->getMiddleware();
+        return "'" . implode("', '", $middleware) . "'";
     }
 
     /**
@@ -333,7 +375,8 @@ abstract class AbstractControllerGenerator
             throw new InvalidArgumentException('Model name cannot be empty');
         }
 
-        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $model)) {
+        // Allow namespaced models (e.g., GeneratedModels\pacsys\Action)
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_\\\\\/]*$/', $model)) {
             throw new InvalidArgumentException('Model name contains invalid characters');
         }
     }
@@ -343,7 +386,7 @@ abstract class AbstractControllerGenerator
      */
     protected function modelExists(string $model): bool
     {
-        $modelClass = "App\\Models\\{$this->getModelName()}";
+        $modelClass = $this->getFullModelClass();
         return class_exists($modelClass);
     }
 
@@ -352,7 +395,7 @@ abstract class AbstractControllerGenerator
      */
     protected function getModelValidationRules(): array
     {
-        $modelClass = "App\\Models\\{$this->getModelName()}";
+        $modelClass = $this->getFullModelClass();
         
         if (!class_exists($modelClass)) {
             return [];
@@ -372,7 +415,7 @@ abstract class AbstractControllerGenerator
      */
     protected function getModelRelationships(): array
     {
-        $modelClass = "App\\Models\\{$this->getModelName()}";
+        $modelClass = $this->getFullModelClass();
         
         if (!class_exists($modelClass)) {
             return [];
@@ -388,7 +431,7 @@ abstract class AbstractControllerGenerator
      */
     protected function usesSoftDeletes(): bool
     {
-        $modelClass = "App\\Models\\{$this->getModelName()}";
+        $modelClass = $this->getFullModelClass();
         
         if (!class_exists($modelClass)) {
             return false;
@@ -403,7 +446,7 @@ abstract class AbstractControllerGenerator
      */
     protected function getFillableFields(): array
     {
-        $modelClass = "App\\Models\\{$this->getModelName()}";
+        $modelClass = $this->getFullModelClass();
         
         if (!class_exists($modelClass)) {
             return [];
